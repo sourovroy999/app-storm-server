@@ -84,6 +84,21 @@ async function run() {
       const user=req.body;
       const query={email:user?.email}
 
+      const isExist=await usersCollection.findOne(query)
+
+      if(isExist){
+        if (user.status === 'requested') {
+          const result=await usersCollection.updateOne(query,{
+            $set:{status: user?.status}
+          })
+          return res.send(result)
+
+        }
+        else{
+          return res.send(isExist)
+        }
+      }
+
       //save user for the first time
       const options={upsert: true}
       const updateDoc={
@@ -99,6 +114,13 @@ async function run() {
 
     })
 
+    app.get('/user/:email', async(req,res)=>{
+      const email=req.params.email
+      const query={email};
+      const result=await usersCollection.findOne(query)
+      res.send(result)
+    })
+
     app.get('/products', async(req,res)=>{
       const products=await productsCollection.find().toArray()
       res.send(products);
@@ -110,6 +132,15 @@ async function run() {
 
       const result=await productsCollection.findOne(id)
       res.send(result);
+    })
+
+
+    // upload product data to the servers
+
+    app.post('/products', async(req,res)=>{
+      const product=req.body;
+      const result=await productsCollection.insertOne(product)
+      res.send(result)
     })
 
    
