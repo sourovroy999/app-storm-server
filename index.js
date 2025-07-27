@@ -150,10 +150,23 @@ async function run() {
 
     //get a single product data
     app.get('/products/:id', async(req,res)=>{
-      const id= new ObjectId(req.params.id);
-
-      const result=await productsCollection.findOne(id)
+      const id= req.params.id;
+      const query={_id: new ObjectId(id)}
+      const result=await productsCollection.findOne(query)
       res.send(result);
+    })
+     //update product
+    app.put('/products/update/:id', async(req,res)=>{
+        const id= req.params.id;
+        const productData=req.body;
+      const query={_id: new ObjectId(id)}
+
+      const updateDoc={
+        $set:productData
+      }
+
+      const result=await productsCollection.updateOne(query, updateDoc)
+      res.send(result)
     })
 
 
@@ -176,6 +189,8 @@ async function run() {
       const result=await productsCollection.find(query).toArray()
       res.send(result)
     })
+
+   
 
 
    
