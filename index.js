@@ -59,6 +59,27 @@ async function run() {
 
     })
 
+     const verifyToken=(req,res,next)=>{
+  
+
+      const token=req.cookies.token;
+
+       if (!token) {
+        console.log('No token found in cookies'); // For debugging
+        return res.status(401).send({ message: 'Unauthorized access - No token provided' });
+    }
+      
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err,decoded)=>{
+        if(err){
+          return res.status(401).send({message: 'forbidden access'})
+        }
+        req.decoded=decoded;
+        next()
+
+      })
+
+    }
+
     app.get('/logout', async(req,res)=>{
       try {
         res
@@ -77,6 +98,7 @@ async function run() {
       }
     })
 
+   
     
 
 
@@ -142,6 +164,19 @@ async function run() {
       const result=await productsCollection.insertOne(product)
       res.send(result)
     })
+
+    //get products by email(for log in user)
+
+    app.get('/my-products',verifyToken,  async(req,res)=>{
+      const email=req.decoded.email;
+      console.log(email)
+      
+      const query={creator_email:email}
+
+      const result=await productsCollection.find(query).toArray()
+      res.send(result)
+    })
+
 
    
 
