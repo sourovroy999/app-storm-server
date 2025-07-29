@@ -40,6 +40,7 @@ async function run() {
     const db=client.db('appStorm')
     const productsCollection=db.collection('products')
     const usersCollection=db.collection('users')
+    const reportsCollection=db.collection('reports')
 
     // console.log(productsCollection);
     
@@ -198,8 +199,107 @@ async function run() {
       res.send(result)
     })
 
+  //report content api
+  // app.patch('/product/report', async(req,res)=>{
+  //   // const id=req.params.id;
+  //   // const query={_id: new ObjectId(id)}
+  //   const reportDetails=req.body
+  //   const updateDoc={
+  //     $set:{
+  //       report:reportDetails
+  //     }
+  //   }
+  // }) 
+  
+  app.put('/products/reports', async(req,res)=>{
+    const reportDetails=req.body;
+    const filter={productId: reportDetails.productId};
+    const updatedDoc={
+      $push:{reports:{...reportDetails.reports[0]},}
+    }
+
+    const options={upsert:true};
+    try {
+       const result=await reportsCollection.updateOne(filter, updatedDoc, options);
+    res.send(result)
+      
+    } catch (error) {
+        console.error('Error updating reports:', error);
+    res.status(500).send({ message: 'Failed to update reports' });
+    }
+    
+
    
 
+  })
+
+  //get all the reported list
+  app.get('/product/reports', async(req,res)=>{
+    try {
+      const result=await reportsCollection.aggregate([
+        {
+          $addFields:{
+            productObjectId:{$toObjectId:"$productId"}
+          }
+        },
+        {
+          $lookup:{
+            from:"products",
+            localField:"productObjectId",
+            foreignField:"_id",
+            as:"ProductDetails"
+          }
+        },
+        {
+          $unwind:{
+            path:"$ProductDetails",
+            preserveNullAndEmptyArrays: false
+
+          }
+        },
+        {
+          $project:{
+            productObjectId:0
+          }
+        }
+      ]).toArray();
+      res.send(result)
+
+      
+    } catch (error) {
+          console.error('Error fetching reported products:', error);
+    res.status(500).send({ error: 'Failed to fetch reported products' });
+
+      
+    }
+     
+  });
+
+   
+//api for moderator
+
+//get all pending products
+app.get('/products-for-reviews', async(req,res)=>{
+  const query={status:'pending'}
+  
+  const result=await productsCollection.find(query).toArray();
+  res.send(result)
+
+})
+
+//update approve status
+app.patch('/product/status/:id', async(req,res)=>{
+  const id=req.params.id;
+  const{status}=req.body;
+  const query={_id:new ObjectId(id)}
+  const updateDoc={
+    $set:{
+      status: status
+    }
+  }
+  const result=await productsCollection.updateOne(query, updateDoc)
+  res.send(result)
+})
 
    
 
