@@ -278,14 +278,61 @@ async function run() {
    
 //api for moderator
 
-//get all pending products
-app.get('/products-for-reviews', async(req,res)=>{
-  const query={status:'pending'}
-  
-  const result=await productsCollection.find(query).toArray();
-  res.send(result)
+//get all  products for moderator
+app.get('/products-for-reviews', async(req, res) => {
+  try {
+    const result = await productsCollection.aggregate([
+      {
+        $addFields: {
+          sortOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$status", "pending"] }, then: 1 },
+                { case: { $eq: ["$status", "featured"] }, then: 2 },
+                { case: { $eq: ["$status", "approved"] }, then: 3 },
+                { case: { $eq: ["$status", "rejected"] }, then: 4 }
+              ],
+              default: 5
+            }
+          }
+        }
+      },
+      { $sort: { sortOrder: 1 } },
+      { $project: { sortOrder: 0 } } // Remove the temporary sortOrder field
+    ]).toArray();
+    
+    res.send(result);
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
 
-})
+// product status count
+
+app.get('/product-status-counts', async (req, res) => {
+  try {
+    const countsRaw = await productsCollection.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    const counts = countsRaw.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {});
+
+    res.send(counts);
+  } catch (error) {
+    console.error('Error getting product status counts:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 
 //update approve status
 app.patch('/product/status/:id', async(req,res)=>{
