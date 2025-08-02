@@ -103,38 +103,35 @@ async function run() {
     
 
 
-    app.put('/user', async(req,res)=>{
-      const user=req.body;
-      const query={email:user?.email}
+  // Express backend
+app.put('/user', async (req, res) => {
+  try {
+    const user = req.body
+    console.log(' User received:', user)
 
-      const isExist=await usersCollection.findOne(query)
+    if (!user.email) return res.status(400).send('Email is required')
 
-      if(isExist){
-        if (user.status === 'requested') {
-          const result=await usersCollection.updateOne(query,{
-            $set:{status: user?.status}
-          })
-          return res.send(result)
-
-        }
-        else{
-          return res.send(isExist)
-        }
+    const filter = { email: user.email }
+    const update = {
+      $set: {
+        ...user,
+        timestamp: Date.now()
       }
+    }
+    const options = { upsert: true }
 
-      //save user for the first time
-      const options={upsert: true}
-      const updateDoc={
-        $set:{
-          ...user,
-          timestamp: Date.now(),
-        }
-      }
-
-      const result=await usersCollection.updateOne(query, updateDoc, options)
-      res.send(result)
+    const result = await usersCollection.updateOne(filter, update, options)
+    res.send(result)
+  } catch (err) {
+    console.error('Error saving user:', err)
+    res.status(500).send('Failed to save user')
+  }
+})
 
 
+    app.get('/users', async(req,res)=>{
+      const result=await usersCollection.find().toArray();
+      res.send(result);
     })
 
     app.get('/user/:email', async(req,res)=>{
