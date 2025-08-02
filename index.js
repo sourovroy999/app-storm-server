@@ -103,31 +103,42 @@ async function run() {
     
 
 
-  // Express backend
+// Updated backend endpoint
 app.put('/user', async (req, res) => {
   try {
     const user = req.body
-    console.log(' User received:', user)
+    // console.log('User received:', user)
 
     if (!user.email) return res.status(400).send('Email is required')
 
     const filter = { email: user.email }
-    const update = {
-      $set: {
-        ...user,
-        timestamp: Date.now()
-      }
+    
+    // Check if user already exists
+    const existingUser = await usersCollection.findOne(filter)
+    
+    if (existingUser) {
+      console.log('User already exists, not updating')
+      return res.send({ 
+        acknowledged: true, 
+        message: 'User already exists',
+        user: existingUser 
+      })
     }
-    const options = { upsert: true }
 
-    const result = await usersCollection.updateOne(filter, update, options)
+    // Only create new user if doesn't exist
+    const newUser = {
+      ...user,
+      timestamp: Date.now()
+    }
+
+    const result = await usersCollection.insertOne(newUser)
     res.send(result)
+    
   } catch (err) {
     console.error('Error saving user:', err)
     res.status(500).send('Failed to save user')
   }
 })
-
 
     app.get('/users', async(req,res)=>{
       const result=await usersCollection.find().toArray();
