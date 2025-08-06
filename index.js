@@ -41,6 +41,7 @@ async function run() {
     const productsCollection=db.collection('products')
     const usersCollection=db.collection('users')
     const reportsCollection=db.collection('reports')
+    const commentsCollection=db.collection('comments')
 
     // console.log(productsCollection);
     
@@ -74,7 +75,7 @@ async function run() {
         if(err){
           return res.status(401).send({message: 'forbidden access'})
         }
-        req.decoded=decoded;
+        req.user=decoded;
         next()
 
       })
@@ -366,6 +367,38 @@ app.put('/user', async (req, res) => {
 
  })
 
+ //comment
+ app.post('/comments',verifyToken, async(req,res)=>{
+  const {productId, commentText, userName, userPhoto}=req.body;
+  console.log(req.user);
+  
+  const userEmail=req.user.email;
+  console.log(userEmail);
+  
+  const newComment={
+    productId,
+    userName,
+    userEmail,
+    userPhoto,
+    commentText,
+    createdAt: new Date()
+  };
+
+  const result=await commentsCollection.insertOne(newComment);
+  res.send(result)
+
+  
+
+ })
+
+ //get the comments
+
+ app.get('/comments/:productId', async(req,res)=>{
+  const productId=req.params.productId;
+  const comments=await commentsCollection.find({productId}).sort({createdAt:-1}).toArray();
+
+  res.send(comments)
+ })
    
 //api for moderator
 
