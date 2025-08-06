@@ -140,10 +140,6 @@ app.put('/user', async (req, res) => {
   }
 })
 
-    app.get('/users', async(req,res)=>{
-      const result=await usersCollection.find().toArray();
-      res.send(result);
-    })
 
     app.get('/user/:email', async(req,res)=>{
       const email=req.params.email
@@ -156,6 +152,8 @@ app.put('/user', async (req, res) => {
       const products=await productsCollection.find().toArray()
       res.send(products);
     })
+
+  
 
     //get a single product data
     app.get('/products/:id', async(req,res)=>{
@@ -186,6 +184,12 @@ app.put('/user', async (req, res) => {
       res.send(result)
     })
 
+    //get the featured products
+    app.get('/featured-products', async(req,res)=>{
+      const query={status:'featured'}
+      const result=await productsCollection.find(query).toArray()
+      res.send(result)
+    })
 
     // upload product data to the servers
 
@@ -283,6 +287,85 @@ app.put('/user', async (req, res) => {
      
   });
 
+
+
+
+
+ //api for normal user
+ 
+ //upvote product
+
+ app.patch('/upvote-product/:id', async(req,res)=>{
+ 
+
+  try {
+     const id=req.params.id;
+  const {user_email}=req.body;
+
+    // Validate required fields
+    if (!user_email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User email is required' 
+      });
+    }
+
+  const query={_id: new ObjectId(id)}
+  const product=await productsCollection.findOne(query)
+
+   if (!product) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Product not found' 
+      });
+    }
+
+      // Check if user is trying to vote on their own product
+    if (product.creator_email === user_email) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You cannot vote on your own product' 
+      });
+    }
+
+    const updateOperation={
+      $inc:{vote_count:1}
+    }
+
+    const result=await productsCollection.updateOne(query, updateOperation)
+
+       if (result.modifiedCount === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Failed to add vote' 
+      });
+    }
+
+    const updatedProduct=await productsCollection.findOne(query, {projection:{vote_count:1}})
+
+        res.status(200).json({
+      success: true,
+      message: 'Vote added successfully',
+      data: {
+        product_id: id,
+        total_votes: updatedProduct.vote_count || 0
+      }
+    });
+
+    // res.send(result,updatedProduct)
+    
+  } catch (error) {
+     console.error('Error in upvote endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+
+
+ })
+
    
 //api for moderator
 
@@ -356,6 +439,34 @@ app.patch('/product/status/:id', async(req,res)=>{
   res.send(result)
 })
 
+// api for admin
+
+    app.get('/users', async(req,res)=>{
+      const result=await usersCollection.find().toArray();
+      res.send(result);
+    })
+
+
+app.patch('/update-role/:email', async(req,res)=>{
+  const email=req.params.email;
+  console.log(req.body);
+  
+  const{role}=req.body;
+  // console.log(newRole);
+  
+  const query={email: email}
+  const updatedDoc={
+    $set:{
+      role: role
+    }
+  }
+
+  const result=await usersCollection.updateOne(query, updatedDoc)
+  res.send(result)
+
+
+
+})
    
 
 
