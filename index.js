@@ -4,6 +4,7 @@ require('dotenv').config()
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
+// const { ObjectId } = require('mongodb'); // Add this import if using MongoDB
 
 const port = process.env.PORT || 8000
 
@@ -42,6 +43,7 @@ async function run() {
     const usersCollection=db.collection('users')
     const reportsCollection=db.collection('reports')
     const commentsCollection=db.collection('comments')
+    const upvotesCollection=db.collection('upvotes')
 
     // console.log(productsCollection);
     
@@ -203,7 +205,7 @@ app.put('/user', async (req, res) => {
     //get products by email(for log in user)
 
     app.get('/my-products',verifyToken,  async(req,res)=>{
-      const email=req.decoded.email;
+      const email=req.user.email;
       console.log(email)
       
       const query={creator_email:email}
@@ -296,76 +298,261 @@ app.put('/user', async (req, res) => {
  
  //upvote product
 
- app.patch('/upvote-product/:id', async(req,res)=>{
+//  app.patch('/upvote-product/:id', async(req,res)=>{
  
 
-  try {
-     const id=req.params.id;
-  const {user_email}=req.body;
+//   try {
+//      const productId=req.params.id;
+//   const {user_email, user_name}=req.body;
 
-    // Validate required fields
-    if (!user_email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User email is required' 
-      });
-    }
+//     // Validate required fields
+//     if (!user_email) {
+//       return res.status(400).json({ 
+//         success: false, 
+//         message: 'User email is required' 
+//       });
+//     }
 
-  const query={_id: new ObjectId(id)}
-  const product=await productsCollection.findOne(query)
+//   const query={_id: new ObjectId(productId)}
+//   const product=await productsCollection.findOne(query)
 
-   if (!product) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Product not found' 
-      });
-    }
+//    if (!product) {
+//       return res.status(404).json({ 
+//         success: false, 
+//         message: 'Product not found' 
+//       });
+//     }
 
-      // Check if user is trying to vote on their own product
-    if (product.creator_email === user_email) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'You cannot vote on your own product' 
-      });
-    }
+//       // Check if user is trying to vote on their own product
+//     if (product.creator_email === user_email) {
+//       return res.status(403).json({ 
+//         success: false, 
+//         message: 'You cannot vote on your own product' 
+//       });
+//     }
 
-    const updateOperation={
-      $inc:{vote_count:1}
-    }
+//     //check  if user already upvoted
+//     const existingVote=await upvotesCollection.findOne({product_id: productId });
 
-    const result=await productsCollection.updateOne(query, updateOperation)
+//     if(existingVote?.upvoted_by?.includes(user_email)){
+//       return res.status(409).json({
+//         success:false,
+//         message:'You Already Upvoted this product'
+//       })
+//     }
 
-       if (result.modifiedCount === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Failed to add vote' 
-      });
-    }
+//     const updateOperation={
+//       $inc:{vote_count:1}
+//     }
 
-    const updatedProduct=await productsCollection.findOne(query, {projection:{vote_count:1}})
+//     const result=await productsCollection.updateOne(query, updateOperation)
 
-        res.status(200).json({
-      success: true,
-      message: 'Vote added successfully',
-      data: {
-        product_id: id,
-        total_votes: updatedProduct.vote_count || 0
-      }
-    });
+//        if (result.modifiedCount === 0) {
+//       return res.status(400).json({ 
+//         success: false, 
+//         message: 'Failed to add vote' 
+//       });
+//     }
 
-    // res.send(result,updatedProduct)
+//     const updatedProduct=await productsCollection.findOne(query, {projection:{vote_count:1}})
+
+//         res.status(200).json({
+//       success: true,
+//       message: 'Vote added successfully',
+//       data: {
+//         product_id: id,
+//         total_votes: updatedProduct.vote_count || 0
+//       }
+//     });
+
+//     // res.send(result,updatedProduct)
     
+//   } catch (error) {
+//      console.error('Error in upvote endpoint:', error);
+//     res.status(500).json({ 
+//       success: false, 
+//       message: 'Internal server error',
+//       error: error.message 
+//     });
+//   }
+
+
+//  })
+
+// app.patch('/upvote-product/:id', verifyToken, async(req,res)=>{
+//   const productId=req.params.id;
+//   const{user_email}=req.body;
+
+//   const existing=await upvotesCollection.findOne({productId})
+
+//   if(!existing){
+//     await upvotesCollection.insertOne({
+//       productId,
+//       upvoted_by:[user_email]
+//     });
+
+//     return res.send({toggled:true, message:'upvoted'})
+//   }
+
+//   const hasUpvoted=existing.upvoted_by.includes(user_email);
+
+//   if(hasUpvoted){
+//     await upvotesCollection.updateOne(
+//       {productId},
+//       {$pull:{upvoted_by:user_email}}
+//     );
+
+//      return res.send({ toggled: false, message: 'Upvote removed' });
+
+//   }else{
+//      await upvotesCollection.updateOne(
+//       { productId },
+//       { $addToSet: { upvoted_by: user_email } }
+//     );
+//     return res.send({ toggled: true, message: 'Upvoted' });
+//   }
+
+
+
+// })
+
+// app.patch('/upvote-product/:id', async(req,res)=>{
+
+//  try {
+  
+//    const productId=req.params.id;
+//   const {user_name, user_email}=req.body;
+
+//   const query={productId: productId};
+//   const product=await upvotesCollection.findOne(query);
+
+//   if(!product){
+//     await upvotesCollection.insertOne({
+//       productId:productId,
+//       upvotedBy:[user_email]
+//     });
+//     return res.send({success:true, message:'upvoted successfully!'})
+//   }
+
+//   if(product.upvotedBy.includes(user_email)){
+//     return res.send({success:false, message:'You Already upvoted this product'})
+//   }
+
+//   await upvotesCollection.updateOne(
+//     {productId:productId},
+//     {$push:{upvotedBy:user_email}}
+//   );
+
+//       res.send({ success: true, message: 'Upvoted successfully!' });
+
+//  } catch (error) {
+//       console.error(error);
+//     res.status(500).send({ success: false, message: 'Server error.' });
+  
+//  }
+
+  
+  
+
+
+
+
+// })
+
+// Toggle Upvote Endpoint
+app.patch('/upvote-product/:id', async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const { user_email } = req.body;
+
+    if (!user_email) {
+      return res.status(400).send({ success: false, message: 'User email is required.' });
+    }
+
+    // Check if already upvoted
+    const existing = await upvotesCollection.findOne({ productId });
+
+    if (existing && existing.upvotedBy?.includes(user_email)) {
+      // Already upvoted → remove upvote
+      await upvotesCollection.updateOne(
+        { productId },
+        { $pull: { upvotedBy: user_email } }
+      );
+      return res.send({ success: true, message: 'Upvote removed.' });
+    } else {
+      // Not yet upvoted → add upvote
+      await upvotesCollection.updateOne(
+        { productId },
+        { $addToSet: { upvotedBy: user_email } }, // $addToSet avoids duplicates
+        { upsert: true } // create if doesn't exist
+      );
+      return res.send({ success: true, message: 'Upvoted successfully!' });
+    }
+
   } catch (error) {
-     console.error('Error in upvote endpoint:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error',
-      error: error.message 
-    });
+    console.error(error);
+    res.status(500).send({ success: false, message: 'Server error.' });
   }
+});
 
 
- })
+app.get('/upvotes-collection', async(req,res)=>{
+  const result=await upvotesCollection.find().toArray();
+  res.send(result)
+})
+
+app.get('/upvotes-collection/:id', async(req,res)=>{
+
+  try {
+    
+     const productId=req.params.id;
+
+  const userEmail=req.query.user_email;
+
+  const query={productId: productId};
+  const result=await upvotesCollection.findOne(query)
+
+  const upvotedBy=result?.upvotedBy || [];
+
+  const totalUpvotes=upvotedBy.length;
+  const hasUpvoted=userEmail ? upvotedBy.includes(userEmail) : false
+
+
+  res.send({totalUpvotes, hasUpvoted})
+
+  } catch (error) {
+     console.error(error);
+    res.status(500).send({ message: 'Failed to fetch upvotes' });
+    
+  }
+ 
+})
+
+
+
+// GET all products
+
+
+// app.get('/products', async (req, res) => {
+//   try {
+//     const products = await productsCollection.find({}).toArray();
+
+//     res.status(200).json({
+//       success: true,
+//       message: 'Products retrieved successfully',
+//       data: products
+//     });
+
+//   } catch (err) {
+//     console.error('Get products error:', err);
+//     res.status(500).json({ 
+//       success: false,
+//       message: 'Internal server error',
+//       ...(process.env.NODE_ENV === 'development' && { error: err.message })
+//     });
+//   }
+// });
+
 
  //comment
  app.post('/comments',verifyToken, async(req,res)=>{
