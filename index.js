@@ -1,12 +1,17 @@
+
+
 const express = require('express')
 const app = express()
 require('dotenv').config()
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 // const { ObjectId } = require('mongodb'); // Add this import if using MongoDB
 
 const port = process.env.PORT || 8000
+
+
 
 // middleware
 const corsOptions = {
@@ -22,6 +27,15 @@ app.use(cors(corsOptions))
 
 app.use(express.json())
 app.use(cookieParser())
+
+// For webhook verification, raw body is needed for that route
+app.use((req, res, next) => {
+    if (req.originalUrl === '/webhook') {
+        express.raw({ type: 'application/json' })(req, res, next);
+    } else {
+        express.json()(req, res, next);
+    }
+});
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -85,6 +99,62 @@ async function run() {
 
     }
 
+    //stripe: payment subscription 
+
+
+    app.post('/create-subscription', async (req, res) => {
+    try {
+      const priceId=process.env.STRIPE_PRICE_ID
+
+        if (!priceId) {
+            return res.status(400).json({ error: 'Price ID is required' });
+        }
+
+        const session = await stripe.checkout.sessions.create({
+            mode: 'subscription',
+            line_items: [{ price: priceId, quantity: 1 }],
+            success_url: `${process.env.BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.BASE_URL}/cancel`
+        });
+
+        res.json({ url: session.url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/webhook', (req, res) => {
+    const sig = req.headers['stripe-signature'];
+
+    let event;
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    switch (event.type) {
+        case 'checkout.session.completed':
+            console.log('✅ Subscription started:', event.data.object);
+            break;
+        case 'invoice.paid':
+            console.log('💰 Invoice paid:', event.data.object);
+            break;
+        case 'invoice.payment_failed':
+            console.log('❌ Payment failed:', event.data.object);
+            break;
+        case 'customer.subscription.updated':
+            console.log('🔄 Subscription updated:', event.data.object);
+            break;
+        default:
+            console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+});
+    
+
     app.get('/logout', async (req, res) => {
       try {
         res
@@ -104,64 +174,6 @@ async function run() {
     })
 
 
-
-
-
-    // // Updated backend endpoint
-    // app.put('/user', async (req, res) => {
-    //   try {
-    //     const user = req.body
-    //     // console.log('User received:', user)
-
-    //     if (!user.email) return res.status(400).send('Email is required')
-
-    //     const filter = { email: user.email }
-
-    //     // Check if user already exists
-    //     const existingUser = await usersCollection.findOne(filter)
-
-    //     // if (existingUser) {
-    //     //   console.log('User already exists, not updating')
-    //     //   return res.send({ 
-    //     //     acknowledged: true, 
-    //     //     message: 'User already exists',
-    //     //     user: existingUser 
-    //     //   })
-    //     // }
-
-    //     // Only create new user if doesn't exist
-
-
-    //     if (existingUser) {
-    //   const updateDoc = {
-    //     $set: {
-    //       name: user.name,
-    //       photoURL: user.photoURL,
-    //       updatedAt: Date.now()
-    //     }
-    //   };
-    //   const result = await usersCollection.updateOne(filter, updateDoc);
-    //   return res.send({
-    //     acknowledged: true,
-    //     message: 'User updated',
-    //     result
-    //   });
-    // }
-
-
-    //     const newUser = {
-    //       ...user,
-    //       timestamp: Date.now()
-    //     }
-
-    //     const result = await usersCollection.insertOne(newUser)
-    //     res.send(result)
-
-    //   } catch (err) {
-    //     console.error('Error saving user:', err)
-    //     res.status(500).send('Failed to save user')
-    //   }
-    // })
 
     app.put('/user', async (req, res) => {
       try {
@@ -183,7 +195,7 @@ async function run() {
               name: user.name || existingUser.name,
               photoURL: user.photoURL || existingUser.photoURL,
               role: existingUser.role || 'guest',
-              status: existingUser.status || 'Verified',
+              status: existingUser.status || 'unverified',
               updatedAt: Date.now(),
             },
           };
@@ -200,7 +212,7 @@ async function run() {
         const newUser = {
           ...user,
           role: user.role || 'guest',
-          status: user.status || 'Verified',
+          status: user.status || 'unverified',
           createdAt: Date.now(),
         };
 
@@ -580,14 +592,30 @@ async function run() {
     })
 
     //get the reviewd product
-    app.get('/product-review/:id', async(req,res)=>{
-      const productId=req.params.id;
-      const query={productId}
-      const result=await reviewsCollection.findOne(query);
-      res.send(result)
+    
 
+    app.get('/product-review/:id', async (req, res) => {
+  const productId = req.params.id;
 
-    })
+  try {
+    const result = await reviewsCollection.aggregate([
+      { $match: { productId } },
+      {
+        $project: {
+          productId: 1,
+          reviews: {
+            $sortArray: { input: "$reviews", sortBy: { createdAt: -1 } }
+          }
+        }
+      }
+    ]).toArray();
+
+    res.send(result[0] || { productId, reviews: [] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Error fetching reviews" });
+  }
+});
 
 
 
@@ -751,6 +779,8 @@ async function run() {
 
 
     })
+
+    
 
 
 
