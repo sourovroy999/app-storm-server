@@ -102,19 +102,25 @@ async function run() {
     //stripe: payment subscription 
 
 
-    app.post('/create-subscription', async (req, res) => {
+app.post('/create-subscription', verifyToken, async (req, res) => {
     try {
-      const priceId=process.env.STRIPE_PRICE_ID
-
+        const priceId = process.env.STRIPE_PRICE_ID;
         if (!priceId) {
             return res.status(400).json({ error: 'Price ID is required' });
+        }
+
+        const userEmail = req.user.email;
+        if (!userEmail) {
+            return res.status(400).json({ error: 'User email is required' });
         }
 
         const session = await stripe.checkout.sessions.create({
             mode: 'subscription',
             line_items: [{ price: priceId, quantity: 1 }],
-            success_url: `${process.env.BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.BASE_URL}/cancel`
+            customer_email: userEmail,
+            success_url: `${process.env.BASE_URL}`,
+            cancel_url: `${process.env.BASE_URL}`,
+            metadata: { email: userEmail }
         });
 
         res.json({ url: session.url });
@@ -124,9 +130,10 @@ async function run() {
     }
 });
 
-app.post('/webhook', (req, res) => {
-    const sig = req.headers['stripe-signature'];
 
+// ...existing code...
+app.post('/webhook', async (req, res) => {
+    const sig = req.headers['stripe-signature'];
     let event;
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
@@ -135,25 +142,65 @@ app.post('/webhook', (req, res) => {
     }
 
     switch (event.type) {
-        case 'checkout.session.completed':
-            console.log('✅ Subscription started:', event.data.object);
+        case 'checkout.session.completed': {
+            const session = event.data.object;
+            const email = session.customer_email || session.metadata?.email;
+            if (email) {
+                await usersCollection.updateOne(
+                    { email },
+                    { $set: { membership: 'premium', status: 'verified' } }
+                );
+                console.log('✅ Subscription started and user updated:', email);
+            }
             break;
-        case 'invoice.paid':
-            console.log('💰 Invoice paid:', event.data.object);
+        }
+        case 'invoice.paid': {
+            const invoice = event.data.object;
+            const email = invoice.customer_email || invoice.metadata?.email;
+            if (email) {
+                await usersCollection.updateOne(
+                    { email },
+                    { $set: { membership: 'premium', status: 'verified' } }
+                );
+                console.log('✅ Invoice paid, user verified:', email);
+            }
             break;
-        case 'invoice.payment_failed':
-            console.log('❌ Payment failed:', event.data.object);
+        }
+        case 'invoice.payment_failed': {
+            const invoice = event.data.object;
+            const email = invoice.customer_email || invoice.metadata?.email;
+            if (email) {
+                await usersCollection.updateOne(
+                    { email },
+                    { $set: { membership: 'free', status: 'unverified' } }
+                );
+                console.log('❌ Payment failed, user downgraded:', email);
+            }
             break;
-        case 'customer.subscription.updated':
-            console.log('🔄 Subscription updated:', event.data.object);
+        }
+        case 'customer.subscription.deleted': {
+            const subscription = event.data.object;
+            const email = subscription.customer_email || subscription.metadata?.email;
+            if (email) {
+                await usersCollection.updateOne(
+                    { email },
+                    { $set: { membership: 'free', status: 'unverified' } }
+                );
+                console.log('❌ Subscription canceled, user downgraded:', email);
+            }
             break;
+        }
         default:
             console.log(`Unhandled event type: ${event.type}`);
     }
 
     res.json({ received: true });
 });
-    
+
+
+
+
+
 
     app.get('/logout', async (req, res) => {
       try {
