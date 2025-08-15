@@ -25,9 +25,6 @@ const corsOptions = {
 }
 app.use(cors(corsOptions))
 
-app.use(express.json())
-app.use(cookieParser())
-
 // For webhook verification, raw body is needed for that route
 app.use((req, res, next) => {
     if (req.originalUrl === '/webhook') {
@@ -36,6 +33,11 @@ app.use((req, res, next) => {
         express.json()(req, res, next);
     }
 });
+
+app.use(express.json())
+app.use(cookieParser())
+
+
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -110,6 +112,8 @@ app.post('/create-subscription', verifyToken, async (req, res) => {
         }
 
         const userEmail = req.user.email;
+        console.log(userEmail, priceId);
+        
         if (!userEmail) {
             return res.status(400).json({ error: 'User email is required' });
         }
@@ -131,7 +135,6 @@ app.post('/create-subscription', verifyToken, async (req, res) => {
 });
 
 
-// ...existing code...
 app.post('/webhook', async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
@@ -196,6 +199,7 @@ app.post('/webhook', async (req, res) => {
 
     res.json({ received: true });
 });
+
 
 
 
@@ -276,6 +280,44 @@ app.post('/webhook', async (req, res) => {
       }
     });
 
+    app.get("/subscription", verifyToken, async (req, res) => {
+  try {
+    const email = req.user?.email;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // First, check database
+    let user = await usersCollection.findOne({ email });
+    let membership = user?.membership || "free";
+
+    // If DB says free/unverified, double-check with Stripe
+    if (membership === "free" || !membership) {
+      // Find Stripe customer by email
+      const customers = await stripe.customers.list({ email });
+      if (customers.data.length > 0) {
+        const customerId = customers.data[0].id;
+
+        // Check if they have an active subscription
+        const subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "active",
+        });
+
+        if (subscriptions.data.length > 0) {
+          membership = "premium";
+        }
+      }
+    }
+
+    res.json({ membership });
+  } catch (err) {
+    console.error("Error fetching subscription:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 
     app.get('/user/:email', async (req, res) => {
       const email = req.params.email
@@ -303,18 +345,28 @@ app.post('/webhook', async (req, res) => {
       }
 
       // Block if status is rejected or pending
-      if (product.status === 'rejected' || product.status === 'pending') {
-        return res.status(403).send({ message: 'Access to this product is restricted' });
-      }
+      // if (product.status === 'rejected' || product.status === 'pending') {
+      //   return res.status(403).send({ message: 'Access to this product is restricted' });
+      // }
 
 
       res.send(product);
     })
     //update product
-    app.put('/products/update/:id', async (req, res) => {
+    app.put('/products/update/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const productData = req.body;
+        const email = req.user.email;
+
+          // Optionally, check if the product belongs to the user
+  const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+  if (!product || product.creator_email !== email) {
+    return res.status(403).send({ message: 'Forbidden: You can only update your own products.' });
+  }
+
       const query = { _id: new ObjectId(id) }
+
+
 
       const updateDoc = {
         $set: productData
@@ -395,13 +447,39 @@ app.post('/webhook', async (req, res) => {
     });
 
 
-    // upload product data to the servers
+    // upload product data to the servers , add product
 
-    app.post('/products', async (req, res) => {
+    app.post('/products', verifyToken, async (req, res) => {
       const product = req.body;
+      const email=req.user.email;
+      const query={creator_email: email};
+
+      const user=await usersCollection.findOne({email});
+
+      if(!user){
+        return res.status(404).json({message:"User not found"})
+      }
+
+      const membership = user.membership || "free";
+
+      if(membership !=='premium'){
+        const existingProductsCount =await productsCollection.countDocuments(query);
+            if (existingProductsCount >= 1) {
+        return res.status(409).send({ error: "Free members can upload only one product" });
+      }
+
+      }
+
+
+      // const uploadedProduct= productsCollection.find(query).toArray;
+
+
       const result = await productsCollection.insertOne(product)
       res.send(result)
     })
+
+    //get subscription status and total uploaded product
+    
 
     //get products by email(for log in user)
 
@@ -415,17 +493,6 @@ app.post('/webhook', async (req, res) => {
       res.send(result)
     })
 
-    //report content api
-    // app.patch('/product/report', async(req,res)=>{
-    //   // const id=req.params.id;
-    //   // const query={_id: new ObjectId(id)}
-    //   const reportDetails=req.body
-    //   const updateDoc={
-    //     $set:{
-    //       report:reportDetails
-    //     }
-    //   }
-    // }) 
 
     app.put('/products/reports', async (req, res) => {
       const reportDetails = req.body;
@@ -443,9 +510,6 @@ app.post('/webhook', async (req, res) => {
         console.error('Error updating reports:', error);
         res.status(500).send({ message: 'Failed to update reports' });
       }
-
-
-
 
     })
 
@@ -595,11 +659,6 @@ app.post('/webhook', async (req, res) => {
         createdAt: new Date(),
       }
 
-      // const result=await reviewsCollection.updateOne(
-      //   {productId:productId},
-      //   {$push: {reviews: newReview}},
-      //   {upsert: true}
-      // )
 
         const result = await reviewsCollection.updateOne(
       { productId },
@@ -672,25 +731,6 @@ app.post('/webhook', async (req, res) => {
     // GET all products
 
 
-    // app.get('/products', async (req, res) => {
-    //   try {
-    //     const products = await productsCollection.find({}).toArray();
-
-    //     res.status(200).json({
-    //       success: true,
-    //       message: 'Products retrieved successfully',
-    //       data: products
-    //     });
-
-    //   } catch (err) {
-    //     console.error('Get products error:', err);
-    //     res.status(500).json({ 
-    //       success: false,
-    //       message: 'Internal server error',
-    //       ...(process.env.NODE_ENV === 'development' && { error: err.message })
-    //     });
-    //   }
-    // });
 
 
     //comment
