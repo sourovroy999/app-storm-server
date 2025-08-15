@@ -479,7 +479,7 @@ app.post('/webhook', async (req, res) => {
     })
 
     //get subscription status and total uploaded product
-    
+
 
     //get products by email(for log in user)
 
@@ -633,72 +633,60 @@ app.post('/webhook', async (req, res) => {
 
     //post review
 
-    app.post('/submit-review', async (req, res) => {
-      console.log(req.body);
-      try {
-
-           const {
-        productId,
-        userName,
-        email,
-        userPhoto,
-        description,
-        rating,
-      } = req.body;
-      if (!productId || !description || !rating || !email) {
-        return res.status(400).json({ success: false, message: "Missing required fields" });
-      }
-
-      const newReview={
-        _id: new ObjectId(),
-            userName,
-        email,
-        userPhoto,
-        description,
-        rating,
-        createdAt: new Date(),
-      }
 
 
-        const result = await reviewsCollection.updateOne(
+app.post('/submit-review', async (req, res) => {
+  try {
+    const { productId, userName, email, userPhoto, description, rating } = req.body;
+
+    // Validate required fields
+    if (!productId || !description || !rating || !email) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const newReview = {
+      _id: new ObjectId(),
+      userName,
+      email,
+      userPhoto,
+      description,
+      rating,
+      createdAt: new Date(),
+    };
+
+    // Update or insert review safely
+    const result = await reviewsCollection.updateOne(
       { productId },
       [
         {
           $set: {
             reviews: {
-              $let: {
-                vars: {
-                  existing: {
-                    $filter: {
-                      input: "$reviews",
-                      as: "rev",
-                      cond: { $ne: ["$$rev.email", email] }
-                    }
+              $concatArrays: [
+                {
+                  $filter: {
+                    input: { $ifNull: ["$reviews", []] }, // ensure array
+                    as: "rev",
+                    cond: { $ne: ["$$rev.email", email] } // remove old review from same user
                   }
                 },
-                in: { $concatArrays: ["$$existing", [newReview]] }
-              }
+                [newReview]
+              ]
             }
           }
         }
       ],
-      { upsert: true }
+      { upsert: true } // create document if not exist
     );
 
-      res.json({ success: true, message: "Review saved successfully" });
+    res.json({ success: true, message: "Review saved successfully", result });
 
-
-      } catch (error) {
-
-        console.error(error);
+  } catch (error) {
+    console.error("Submit Review Error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
 
-      }
 
-    })
-
-    //get the reviewd product
-    
 
     app.get('/product-review/:id', async (req, res) => {
   const productId = req.params.id;
