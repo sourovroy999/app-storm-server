@@ -387,7 +387,11 @@ app.post('/webhook', async (req, res) => {
     //get the featured products
     app.get('/featured-products', async (req, res) => {
       const query = { status: 'featured' }
-      const result = await productsCollection.find(query).toArray()
+      const result = await productsCollection
+      .find(query)
+      .sort({uploadedAt:-1})
+      .limit(4)
+      .toArray()
       res.send(result)
     })
 
@@ -473,6 +477,7 @@ app.post('/webhook', async (req, res) => {
 
       // const uploadedProduct= productsCollection.find(query).toArray;
 
+      product.uploadedAt=new Date()
 
       const result = await productsCollection.insertOne(product)
       res.send(result)
