@@ -18,6 +18,7 @@ const corsOptions = {
   origin:
     ['http://localhost:5173',
       'http://localhost:5174',
+      'https://appstorm-c52b2.web.app'
 
     ],
   credentials: true,
@@ -838,6 +839,79 @@ app.post('/submit-review', async (req, res) => {
       res.send(result);
     })
 
+    // app.get('/user-role-counts', async(req,res)=>{
+    //   try{
+    //     const counts=await usersCollection.aggregate([
+    //       {
+    //         $group:{
+    //           _id:"$role",
+    //           count:{$sum: 1}
+    //         }
+    //       }
+    //     ]).toArray()
+
+    //     //
+    //     const roleCounts=counts.reduce((acc,item)=>{
+    //       acc[item._id]=item.count;
+    //       return acc
+    //     }, {admin:0, moderator:0, guest:0})
+
+    //     res.send(roleCounts)
+
+    //     const premiumCount=await us
+
+    //   } catch(err){
+    //         console.error(err);
+    // res.status(500).send({ error: "Failed to get role counts" });
+    //   }
+    // })
+
+app.get('/user-stats', async (req, res) => {
+  try {
+    const aggregation = await usersCollection.aggregate([
+      {
+        $facet: {
+          roles: [
+            {
+              $group: {
+                _id: { $ifNull: ["$role", "unknown"] }, // Handle missing role
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          memberships: [
+            {
+              $group: {
+                _id: { $ifNull: ["$membership", "free"] }, // Handle missing membership - default to "free"
+                count: { $sum: 1 }
+              }
+            }
+          ]
+        }
+      }
+    ]).toArray();
+
+    const result = { roles: {}, memberships: {} };
+    
+    if (aggregation[0]) {
+      // Handle roles (including "unknown")
+      aggregation[0].roles.forEach(r => {
+        result.roles[r._id] = r.count;
+      });
+      
+      // Handle memberships (including "free" default)
+      aggregation[0].memberships.forEach(m => {
+        result.memberships[m._id] = m.count;
+      });
+    }
+
+    res.send(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Failed to get user stats" });
+  }
+});
+
 
     app.patch('/update-role/:email', async (req, res) => {
       const email = req.params.email;
@@ -871,8 +945,8 @@ app.post('/submit-review', async (req, res) => {
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
   } finally {
     // Ensures that the client will close when you finish/error
